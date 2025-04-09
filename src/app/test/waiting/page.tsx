@@ -1,61 +1,67 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+
+interface TestSession {
+  id: string
+  user_id: string
+  partner_id: string | null
+  status: string
+  created_at: string
+}
 
 export default function WaitingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [partnerStatus, setPartnerStatus] = useState<'waiting' | 'completed'>('waiting')
+  const [session, setSession] = useState<TestSession | null>(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [email, setEmail] = useState('')
   const [sending, setSending] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const sessionId = searchParams.get('sessionId')
 
-  useEffect(() => {
-    const id = searchParams.get('sessionId')
-    if (!id) {
-      setError('Geçersiz oturum')
-      setLoading(false)
-      return
-    }
-    setSessionId(id)
-  }, [searchParams])
-
-  useEffect(() => {
-    if (sessionId) {
-      checkPartnerStatus()
-    }
-  }, [sessionId])
-
-  const checkPartnerStatus = async () => {
+  const checkPartnerStatus = useCallback(async () => {
     if (!sessionId) return
 
     try {
-      const { data, error } = await supabase
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      if (!authSession) {
+        router.push('/auth/login')
+        return
+      }
+
+      const { data: testSession, error: testError } = await supabase
         .from('test_sessions')
-        .select('status')
+        .select('*')
         .eq('id', sessionId)
         .single()
 
-      if (error) throw error
+      if (testError) throw testError
+      setSession(testSession)
 
-      if (data.status === 'completed') {
+      if (testSession.status === 'completed') {
         router.push(`/result/${sessionId}`)
-      } else {
-        setPartnerStatus('waiting')
-        // 10 saniyede bir kontrol et
-        setTimeout(checkPartnerStatus, 10000)
       }
-    } catch (error: any) {
-      setError(error.message)
-    } finally {
-      setLoading(false)
+    } catch (err) {
+      setError('Test durumu kontrol edilemedi')
     }
-  }
+  }, [sessionId, router])
+
+  useEffect(() => {
+    if (!sessionId) {
+      setError('Test oturumu bulunamadı')
+      setLoading(false)
+      return
+    }
+
+    checkPartnerStatus()
+    const interval = setInterval(checkPartnerStatus, 5000)
+
+    return () => clearInterval(interval)
+  }, [sessionId, checkPartnerStatus])
 
   const copyInviteLink = async () => {
     if (!sessionId) return

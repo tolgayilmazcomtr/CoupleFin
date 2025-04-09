@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { User } from '@/types'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')

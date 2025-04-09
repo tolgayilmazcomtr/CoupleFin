@@ -4,30 +4,30 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { User } from '@/types'
 
-export default function Home() {
-  const [user, setUser] = useState<User | null>(null)
+export default function HomePage() {
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
-    const checkUser = async () => {
+    const checkAuth = async () => {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-        if (error) throw error
-        if (user) {
-          setUser(user)
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        
+        if (sessionError) throw sessionError
+        if (session) {
           router.push('/dashboard')
+          return
         }
-      } catch (err) {
-        console.error('Error checking user:', err)
+      } catch (error) {
+        setError('Oturum kontrolü yapılamadı')
       } finally {
         setLoading(false)
       }
     }
 
-    checkUser()
+    checkAuth()
   }, [router])
 
   if (loading) {

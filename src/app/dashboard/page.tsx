@@ -13,8 +13,7 @@ interface TestResult {
   status: string
 }
 
-export default function Dashboard() {
-  const [user, setUser] = useState<User | null>(null)
+export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [testSessions, setTestSessions] = useState<TestSession[]>([])
@@ -23,38 +22,35 @@ export default function Dashboard() {
   const router = useRouter()
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchUserData = async () => {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-        if (error) throw error
-        if (!user) {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        
+        if (sessionError) throw sessionError
+        if (!session) {
           router.push('/auth/login')
           return
         }
-        setUser(user)
 
-        // Test oturumlarını getir
-        const { data: sessions, error: sessionsError } = await supabase
+        const { data: testData, error: testError } = await supabase
           .from('test_sessions')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', session.user.id)
           .order('created_at', { ascending: false })
 
-        if (sessionsError) throw sessionsError
-        setTestSessions(sessions || [])
+        if (testError) throw testError
+        setTestSessions(testData || [])
 
-        await fetchTestResults(user.id)
-        await checkPremiumStatus(user.id)
-      } catch (err) {
+        await fetchTestResults(session.user.id)
+        await checkPremiumStatus(session.user.id)
+      } catch (error) {
         setError('Kullanıcı bilgileri alınamadı')
-        console.error('Error fetching user:', err)
-        router.push('/auth/login')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchUser()
+    fetchUserData()
   }, [router])
 
   const fetchTestResults = async (userId: string) => {

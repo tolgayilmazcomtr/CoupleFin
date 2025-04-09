@@ -1,8 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { TestSession, TestAnswer } from '@/types'
+
+interface CategoryScore {
+  category: string
+  userScore: number
+  partnerScore: number
+  compatibility: number
+}
 
 interface ResultClientProps {
   sessionId: string
@@ -11,54 +18,19 @@ interface ResultClientProps {
 export default function ResultClient({ sessionId }: ResultClientProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [scores, setScores] = useState<Record<string, number>>({})
-
-  const calculateScores = useCallback((answers: Record<string, number>) => {
-    const categories: Record<string, number[]> = {
-      iletişim: [],
-      güven: [],
-      değerler: [],
-      gelecek: [],
-      cinsellik: [],
-    }
-
-    Object.entries(answers).forEach(([questionId, answer]) => {
-      const category = questionId.split('_')[0]
-      if (categories[category]) {
-        categories[category].push(answer)
-      }
-    })
-
-    const scores: Record<string, number> = {}
-    Object.entries(categories).forEach(([category, values]) => {
-      if (values.length > 0) {
-        scores[category] = Math.round(
-          (values.reduce((a, b) => a + b, 0) / values.length) * 20
-        )
-      }
-    })
-
-    return scores
-  }, [])
+  const [scores, setScores] = useState<CategoryScore[]>([])
+  const router = useRouter()
 
   useEffect(() => {
-    const fetchSession = async () => {
+    const fetchResults = async () => {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession()
         
         if (sessionError) throw sessionError
         if (!session) {
-          setError('Oturum bulunamadı')
+          router.push('/auth/login')
           return
         }
-
-        const { data: testSession, error: testError } = await supabase
-          .from('test_sessions')
-          .select('*')
-          .eq('id', sessionId)
-          .single()
-
-        if (testError) throw testError
 
         const { data: answers, error: answersError } = await supabase
           .from('test_answers')
@@ -67,25 +39,53 @@ export default function ResultClient({ sessionId }: ResultClientProps) {
 
         if (answersError) throw answersError
 
-        const userAnswers: Record<string, number> = {}
-        const partnerAnswers: Record<string, number> = {}
+        const userAnswers = answers?.find(a => a.user_id === session.user.id)?.answers || {}
+        const partnerAnswers = answers?.find(a => a.user_id !== session.user.id)?.answers || {}
 
-        answers.forEach((answer: TestAnswer) => {
-          if (answer.user_id === session.user.id) {
-            userAnswers[answer.question_id] = answer.answer
-          } else {
-            partnerAnswers[answer.question_id] = answer.answer
+        const calculateScores = (answers: Record<string, number>) => {
+          const categories: Record<string, number[]> = {
+            iletişim: [],
+            güven: [],
+            değerler: [],
+            gelecek: [],
+            cinsellik: [],
           }
-        })
+
+          Object.entries(answers).forEach(([questionId, answer]) => {
+            const category = questionId.split('_')[0]
+            if (categories[category]) {
+              categories[category].push(answer)
+            }
+          })
+
+          const scores: Record<string, number> = {}
+          Object.entries(categories).forEach(([category, values]) => {
+            if (values.length > 0) {
+              scores[category] = Math.round(
+                (values.reduce((a, b) => a + b, 0) / values.length) * 20
+              )
+            }
+          })
+
+          return scores
+        }
 
         const userScores = calculateScores(userAnswers)
         const partnerScores = calculateScores(partnerAnswers)
 
-        const combinedScores: Record<string, number> = {}
+        const combinedScores: CategoryScore[] = []
         Object.keys(userScores).forEach((category) => {
-          combinedScores[category] = Math.round(
-            (userScores[category] + partnerScores[category]) / 2
+          const userScore = userScores[category]
+          const partnerScore = partnerScores[category]
+          const compatibility = Math.round(
+            (userScore + partnerScore) / 2
           )
+          combinedScores.push({
+            category,
+            userScore,
+            partnerScore,
+            compatibility,
+          })
         })
 
         setScores(combinedScores)
@@ -100,8 +100,8 @@ export default function ResultClient({ sessionId }: ResultClientProps) {
       }
     }
 
-    fetchSession()
-  }, [sessionId, calculateScores])
+    fetchResults()
+  }, [sessionId, router])
 
   if (loading) {
     return (
@@ -156,7 +156,7 @@ export default function ResultClient({ sessionId }: ResultClientProps) {
         </div>
 
         <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {Object.entries(scores).map(([category, score]) => (
+          {scores.map(({ category, userScore, partnerScore, compatibility }) => (
             <div
               key={category}
               className="bg-white overflow-hidden shadow rounded-lg"
@@ -185,7 +185,7 @@ export default function ResultClient({ sessionId }: ResultClientProps) {
                       </dt>
                       <dd className="flex items-baseline">
                         <div className="text-2xl font-semibold text-gray-900">
-                          {score}%
+                          {userScore}%
                         </div>
                       </dd>
                     </dl>
