@@ -1,10 +1,10 @@
+'use client'
+
 import { Suspense } from 'react'
 import ResultClient from './ResultClient'
 
 interface ResultPageProps {
-  params: {
-    sessionId: string
-  }
+  params: Promise<{ sessionId: string }>
 }
 
 export default function ResultPage({ params }: ResultPageProps) {
@@ -19,7 +19,7 @@ export default function ResultPage({ params }: ResultPageProps) {
         </div>
       }
     >
-      <ResultClient sessionId={params.sessionId} />
+      <ResultClient sessionId={params.then(p => p.sessionId)} />
     </Suspense>
   )
 } 
