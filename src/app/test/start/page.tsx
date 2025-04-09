@@ -1,199 +1,142 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-interface Question {
-  id: string
-  category: string
-  text: string
-  order: number
-}
-
-interface TestSession {
-  id: string
-  user_id: string
-  created_at: string
-}
-
-const categories = ['spending', 'saving', 'debt', 'emotion', 'goals'] as const
-type Category = typeof categories[number]
-
-export default function TestStart() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(true)
+export default function StartTestPage() {
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [questions, setQuestions] = useState<Question[]>([])
-  const [currentCategory, setCurrentCategory] = useState<Category>('spending')
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, number>>({})
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const router = useRouter()
 
-  useEffect(() => {
-    const initializeTest = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          router.push('/auth/login')
-          return
-        }
-
-        // Test oturumu oluştur
-        const { data: session, error: sessionError } = await supabase
-          .from('test_sessions')
-          .insert({ user_id: user.id })
-          .select()
-          .single()
-
-        if (sessionError) throw sessionError
-        setSessionId(session.id)
-
-        // Soruları getir
-        const { data: questionsData, error: questionsError } = await supabase
-          .from('questions')
-          .select('*')
-          .order('order', { ascending: true })
-
-        if (questionsError) throw questionsError
-        setQuestions(questionsData)
-      } catch (err) {
-        setError('Test başlatılırken bir hata oluştu. Lütfen tekrar deneyin.')
-        console.error('Error initializing test:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    initializeTest()
-  }, [router])
-
-  const currentQuestions = questions.filter(q => q.category === currentCategory)
-  const currentQuestion = currentQuestions[currentQuestionIndex]
-
-  const handleAnswer = async (value: number) => {
-    if (!sessionId || !currentQuestion) return
+  const handleStartTest = async () => {
+    setLoading(true)
+    setError(null)
 
     try {
-      const { error } = await supabase
-        .from('test_answers')
-        .insert({
-          session_id: sessionId,
-          question_id: currentQuestion.id,
-          answer_value: value
-        })
-
-      if (error) throw error
-
-      setAnswers(prev => ({ ...prev, [currentQuestion.id]: value }))
-
-      // Sonraki soruya geç
-      if (currentQuestionIndex < currentQuestions.length - 1) {
-        setCurrentQuestionIndex(prev => prev + 1)
-      } else {
-        // Kategori tamamlandı, sonraki kategoriye geç
-        const currentCategoryIndex = categories.indexOf(currentCategory)
-        if (currentCategoryIndex < categories.length - 1) {
-          setCurrentCategory(categories[currentCategoryIndex + 1])
-          setCurrentQuestionIndex(0)
-        } else {
-          // Test tamamlandı, bekleme sayfasına yönlendir
-          router.push(`/test/waiting?sessionId=${sessionId}`)
-        }
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) throw sessionError
+      if (!session) {
+        router.push('/auth/login')
+        return
       }
-    } catch (err) {
-      setError('Cevap kaydedilirken bir hata oluştu. Lütfen tekrar deneyin.')
-      console.error('Error saving answer:', err)
+
+      const { data: testSession, error: testError } = await supabase
+        .from('test_sessions')
+        .insert([
+          {
+            user_id: session.user.id,
+            status: 'pending',
+          },
+        ])
+        .select()
+        .single()
+
+      if (testError) throw testError
+
+      router.push(`/test/questions/${testSession.id}`)
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message)
+      } else {
+        setError('Bir hata oluştu')
+      }
+    } finally {
+      setLoading(false)
     }
   }
-
-  const getCategoryName = (category: Category): string => {
-    const names: Record<Category, string> = {
-      spending: 'Harcama Alışkanlıkları',
-      saving: 'Birikim Alışkanlıkları',
-      debt: 'Borç Yönetimi',
-      emotion: 'Para ile İlişki',
-      goals: 'Ortak Hedefler'
-    }
-    return names[category]
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-red-50 p-4 rounded-lg">
-          <p className="text-red-600">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-          >
-            Tekrar Dene
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const progress = ((categories.indexOf(currentCategory) * 20) + 
-    ((currentQuestionIndex + 1) / currentQuestions.length * 20))
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
-        {/* Progress Bar */}
-        <div className="mb-8">
-          <div className="flex justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">
-              {getCategoryName(currentCategory)}
-            </span>
-            <span className="text-sm font-medium text-gray-700">
-              {Math.round(progress)}%
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <div
-              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
+        <div className="text-center">
+          <h1 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+            Uyumluluk Testi
+          </h1>
+          <p className="mt-3 max-w-2xl mx-auto text-xl text-gray-500 sm:mt-4">
+            İlişkinizin farklı alanlardaki uyumunu ölçmek için hazırlanmış bir test
+          </p>
         </div>
 
-        {/* Soru Kartı */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            {currentQuestion?.text}
-          </h2>
+        <div className="mt-12 bg-white shadow rounded-lg p-6">
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">Test Hakkında</h2>
+              <p className="mt-2 text-gray-500">
+                Bu test, ilişkinizin farklı alanlardaki uyumunu ölçmek için tasarlanmıştır.
+                Testi tamamladıktan sonra, partnerinize bir bağlantı gönderebilirsiniz.
+                Partneriniz de testi tamamladığında, sonuçlarınızı birlikte görebilirsiniz.
+              </p>
+            </div>
 
-          {/* Cevap Seçenekleri */}
-          <div className="space-y-4 mt-6">
-            {[1, 2, 3, 4].map((value) => (
-              <button
-                key={value}
-                onClick={() => handleAnswer(value)}
-                className={`w-full p-4 rounded-lg border-2 transition-colors ${
-                  answers[currentQuestion?.id || ''] === value
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">
-                    {value === 1 && 'Kesinlikle Katılmıyorum'}
-                    {value === 2 && 'Katılmıyorum'}
-                    {value === 3 && 'Katılıyorum'}
-                    {value === 4 && 'Kesinlikle Katılıyorum'}
-                  </span>
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">Nasıl Çalışır?</h2>
+              <ol className="mt-2 space-y-2 text-gray-500">
+                <li>1. Testi başlatın ve soruları yanıtlayın</li>
+                <li>2. Testi tamamladıktan sonra, partnerinize bir bağlantı gönderin</li>
+                <li>3. Partneriniz testi tamamladığında, sonuçlarınızı birlikte görün</li>
+              </ol>
+            </div>
+
+            {error && (
+              <div className="rounded-md bg-red-50 p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg
+                      className="h-5 w-5 text-red-400"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                  </div>
                 </div>
+              </div>
+            )}
+
+            <div>
+              <button
+                onClick={handleStartTest}
+                disabled={loading}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="flex items-center">
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Başlatılıyor...
+                  </span>
+                ) : (
+                  'Testi Başlat'
+                )}
               </button>
-            ))}
+            </div>
           </div>
         </div>
       </div>
