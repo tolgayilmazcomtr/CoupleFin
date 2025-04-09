@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { User } from '@/types'
 
 export default function Home() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -16,10 +17,9 @@ export default function Home() {
         const { data: { user }, error } = await supabase.auth.getUser()
         if (error) throw error
         if (user) {
+          setUser(user)
           router.push('/dashboard')
-          return
         }
-        setUser(user)
       } catch (err) {
         console.error('Error checking user:', err)
       } finally {
@@ -28,7 +28,7 @@ export default function Home() {
     }
 
     checkUser()
-  }, [])
+  }, [router])
 
   if (loading) {
     return (

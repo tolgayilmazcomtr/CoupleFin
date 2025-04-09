@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { User, TestSession } from '@/types'
 
 interface TestResult {
   id: string
@@ -13,10 +14,10 @@ interface TestResult {
 }
 
 export default function Dashboard() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [testSessions, setTestSessions] = useState<any[]>([])
+  const [testSessions, setTestSessions] = useState<TestSession[]>([])
   const [testResults, setTestResults] = useState<TestResult[]>([])
   const [isPremium, setIsPremium] = useState(false)
   const router = useRouter()
@@ -54,7 +55,7 @@ export default function Dashboard() {
     }
 
     fetchUser()
-  }, [])
+  }, [router])
 
   const fetchTestResults = async (userId: string) => {
     try {
